@@ -249,6 +249,6 @@
 	.gallery-rendom__button,
 	.gallery-rendom__info,
 	.gallery-rendom__caption {
-		border: 2px solid ButtonText;
+		border: 1px solid ButtonText;
 	}
 }

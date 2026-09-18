@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Gallery Random
  * Description: Displays one randomized hero gallery image with title, description, buttons, and click-to-view captions.
- * Version: 1.0.24
+ * Version: 1.0.25
  * Author: Lobsang Wangdu
  * Text Domain: gallery-random
  *
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GALLERY_RENDOM_VERSION', '1.0.24' );
+define( 'GALLERY_RENDOM_VERSION', '1.0.25' );
 define( 'GALLERY_RENDOM_LAST_COOKIE', 'gallery_rendom_last_item' );
 define( 'GALLERY_RENDOM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'GALLERY_RENDOM_DEFAULT_CONTENT_BACKGROUND', '#f6f4ef' );
@@ -123,23 +123,26 @@ add_action( 'add_meta_boxes', 'gallery_rendom_add_meta_boxes' );
 function gallery_rendom_render_meta_box( $post ) {
 	wp_nonce_field( 'gallery_rendom_save_meta', 'gallery_rendom_meta_nonce' );
 
-	$caption            = get_post_meta( $post->ID, '_gallery_rendom_caption', true );
 	$primary_label      = get_post_meta( $post->ID, '_gallery_rendom_primary_label', true );
 	$primary_url        = get_post_meta( $post->ID, '_gallery_rendom_primary_url', true );
 	$secondary_label    = get_post_meta( $post->ID, '_gallery_rendom_secondary_label', true );
 	$secondary_url      = get_post_meta( $post->ID, '_gallery_rendom_secondary_url', true );
 	$image_position     = get_post_meta( $post->ID, '_gallery_rendom_image_position', true );
-	$featured_image_tip = __( 'Use the Featured Image box for this hero image. The post title and editor content are displayed over the image.', 'gallery-random' );
-
-	if ( ! $image_position ) {
-		$image_position = 'center center';
-	}
+	$use_default_title  = '1' === get_post_meta( $post->ID, '_gallery_rendom_use_default_title', true );
+	$featured_image_tip = __( 'Choose a Featured Image and edit its caption in the Media Library. Leave description and button fields blank to use Settings > Gallery Random defaults. The excerpt takes priority over editor content for the description.', 'gallery-random' );
 	?>
 	<p><?php echo esc_html( $featured_image_tip ); ?></p>
+	<p>
+		<label>
+			<input type="checkbox" name="gallery_rendom_use_default_title" value="1" <?php checked( $use_default_title ); ?>>
+			<?php esc_html_e( 'Use the default gallery title for this item', 'gallery-random' ); ?>
+		</label>
+	</p>
 
 	<p>
 		<label for="gallery_rendom_image_position"><strong><?php esc_html_e( 'Image Focal Position', 'gallery-random' ); ?></strong></label>
 		<select class="widefat" id="gallery_rendom_image_position" name="gallery_rendom_image_position">
+			<option value="" <?php selected( $image_position, '' ); ?>><?php esc_html_e( 'Use plugin default', 'gallery-random' ); ?></option>
 			<?php
 			$image_positions = array(
 				'center center' => __( 'Center', 'gallery-random' ),
@@ -154,11 +157,6 @@ function gallery_rendom_render_meta_box( $post ) {
 				<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $image_position, $value ); ?>><?php echo esc_html( $label ); ?></option>
 			<?php endforeach; ?>
 		</select>
-	</p>
-
-	<p>
-		<label for="gallery_rendom_caption"><strong><?php esc_html_e( 'Hidden Caption', 'gallery-random' ); ?></strong></label>
-		<textarea class="widefat" id="gallery_rendom_caption" name="gallery_rendom_caption" rows="3"><?php echo esc_textarea( $caption ); ?></textarea>
 	</p>
 
 	<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -201,13 +199,18 @@ function gallery_rendom_save_meta( $post_id ) {
 	}
 
 	$fields = array(
-		'_gallery_rendom_caption'         => array( 'gallery_rendom_caption', 'sanitize_textarea_field' ),
 		'_gallery_rendom_primary_label'   => array( 'gallery_rendom_primary_label', 'sanitize_text_field' ),
 		'_gallery_rendom_primary_url'     => array( 'gallery_rendom_primary_url', 'esc_url_raw' ),
 		'_gallery_rendom_secondary_label' => array( 'gallery_rendom_secondary_label', 'sanitize_text_field' ),
 		'_gallery_rendom_secondary_url'   => array( 'gallery_rendom_secondary_url', 'esc_url_raw' ),
-		'_gallery_rendom_image_position'  => array( 'gallery_rendom_image_position', 'gallery_rendom_sanitize_image_position' ),
+		'_gallery_rendom_image_position'  => array( 'gallery_rendom_image_position', 'gallery_rendom_sanitize_optional_position' ),
 	);
+	$use_default_title = isset( $_POST['gallery_rendom_use_default_title'] ) ? '1' : '';
+	if ( '' === $use_default_title ) {
+		delete_post_meta( $post_id, '_gallery_rendom_use_default_title' );
+	} else {
+		update_post_meta( $post_id, '_gallery_rendom_use_default_title', $use_default_title );
+	}
 
 	foreach ( $fields as $meta_key => $field ) {
 		$field_name = $field[0];
@@ -244,6 +247,13 @@ add_action( 'untrashed_post', 'gallery_rendom_clear_item_ids_cache' );
  * Add plugin settings page.
  */
 function gallery_rendom_add_settings_page() {
+	add_options_page(
+		__( 'Gallery Random Settings', 'gallery-random' ),
+		__( 'Gallery Random', 'gallery-random' ),
+		'manage_options',
+		'gallery-random-settings',
+		'gallery_rendom_render_settings_page'
+	);
 	add_submenu_page(
 		'edit.php?post_type=gallery_rendom_item',
 		__( 'Gallery Random Settings', 'gallery-random' ),
@@ -259,6 +269,15 @@ add_action( 'admin_menu', 'gallery_rendom_add_settings_page' );
  * Register plugin settings.
  */
 function gallery_rendom_register_settings() {
+	register_setting(
+		'gallery_rendom_settings',
+		'gallery_rendom_content_defaults',
+		array(
+			'type'              => 'array',
+			'sanitize_callback' => 'gallery_rendom_sanitize_content_defaults',
+			'default'           => array(),
+		)
+	);
 	$settings = array(
 		'gallery_rendom_content_background'        => GALLERY_RENDOM_DEFAULT_CONTENT_BACKGROUND,
 		'gallery_rendom_title_color'               => GALLERY_RENDOM_DEFAULT_TITLE_COLOR,
@@ -310,6 +329,8 @@ function gallery_rendom_render_settings_page() {
 		<?php endif; ?>
 		<form method="post" action="options.php">
 			<?php settings_fields( 'gallery_rendom_settings' ); ?>
+			<?php gallery_rendom_render_content_defaults(); ?>
+			<h2><?php esc_html_e( 'Colors', 'gallery-random' ); ?></h2>
 			<table class="form-table" role="presentation">
 				<tr>
 					<th scope="row">
@@ -500,6 +521,123 @@ function gallery_rendom_sanitize_image_position( $value ) {
 }
 
 /**
+ * Sanitize an optional per-item focal position, preserving inheritance.
+ *
+ * @param string $value Submitted position.
+ * @return string
+ */
+function gallery_rendom_sanitize_optional_position( $value ) {
+	return is_string( $value ) && '' !== trim( $value ) ? gallery_rendom_sanitize_image_position( $value ) : '';
+}
+
+/**
+ * Get labels for shared content settings.
+ *
+ * @return array
+ */
+function gallery_rendom_content_fields() {
+	return array(
+		'title'           => __( 'Gallery Title', 'gallery-random' ),
+		'description'     => __( 'Gallery Description', 'gallery-random' ),
+		'primary_label'   => __( 'Primary Button Text', 'gallery-random' ),
+		'primary_url'     => __( 'Primary Button URL', 'gallery-random' ),
+		'secondary_label' => __( 'Secondary Button Text', 'gallery-random' ),
+		'secondary_url'   => __( 'Secondary Button URL', 'gallery-random' ),
+		'image_position'  => __( 'Image Focal Position', 'gallery-random' ),
+	);
+}
+
+/**
+ * Sanitize shared content, accepting only known scalar fields.
+ *
+ * @param mixed $input Submitted settings.
+ * @return array
+ */
+function gallery_rendom_sanitize_content_defaults( $input ) {
+	$input  = is_array( $input ) ? $input : array();
+	$result = array();
+	foreach ( gallery_rendom_content_fields() as $key => $label ) {
+		$value = isset( $input[ $key ] ) && is_string( $input[ $key ] ) ? trim( $input[ $key ] ) : '';
+		if ( 'image_position' === $key ) {
+			$result[ $key ] = gallery_rendom_sanitize_image_position( $value );
+		} elseif ( in_array( $key, array( 'primary_url', 'secondary_url' ), true ) ) {
+			$result[ $key ] = esc_url_raw( $value );
+		} elseif ( 'description' === $key ) {
+			$result[ $key ] = sanitize_textarea_field( $value );
+		} else {
+			$result[ $key ] = sanitize_text_field( $value );
+		}
+	}
+	return $result;
+}
+
+/**
+ * Resolve blank item fields against shared defaults without copying data.
+ *
+ * @param int $post_id Gallery item ID.
+ * @return array
+ */
+function gallery_rendom_get_item_content( $post_id ) {
+	$content = gallery_rendom_sanitize_content_defaults( get_option( 'gallery_rendom_content_defaults', array() ) );
+	foreach ( $content as $key => $default ) {
+		if ( 'title' === $key ) {
+			$use_default_title = '1' === get_post_meta( $post_id, '_gallery_rendom_use_default_title', true );
+			$value             = $use_default_title ? '' : get_post_field( 'post_title', $post_id, 'raw' );
+		} elseif ( 'description' === $key ) {
+			$value = trim( wp_strip_all_tags( get_post_field( 'post_excerpt', $post_id, 'raw' ) ) );
+			if ( '' === $value ) {
+				$value = wp_strip_all_tags( strip_shortcodes( get_post_field( 'post_content', $post_id, 'raw' ) ) );
+			}
+		} else {
+			$value = get_post_meta( $post_id, '_gallery_rendom_' . $key, true );
+		}
+		if ( is_string( $value ) && '' !== trim( $value ) ) {
+			$content[ $key ] = trim( $value );
+		}
+	}
+	$content['image_position'] = gallery_rendom_sanitize_image_position( $content['image_position'] );
+	return $content;
+}
+
+/**
+ * Render accessible controls for plugin-wide content defaults.
+ */
+function gallery_rendom_render_content_defaults() {
+	$defaults = gallery_rendom_sanitize_content_defaults( get_option( 'gallery_rendom_content_defaults', array() ) );
+	$positions = array(
+		'center center' => __( 'Center', 'gallery-random' ),
+		'center top'    => __( 'Top', 'gallery-random' ),
+		'center bottom' => __( 'Bottom', 'gallery-random' ),
+		'left center'   => __( 'Left', 'gallery-random' ),
+		'right center'  => __( 'Right', 'gallery-random' ),
+	);
+	?>
+	<h2><?php esc_html_e( 'Default Gallery Content', 'gallery-random' ); ?></h2>
+	<p><?php esc_html_e( 'Blank item fields use these defaults. Each button needs both text and a URL. Captions always come from the featured image in the Media Library.', 'gallery-random' ); ?></p>
+	<table class="form-table" role="presentation">
+		<?php foreach ( gallery_rendom_content_fields() as $key => $label ) : ?>
+			<tr>
+				<th scope="row"><label for="gallery-default-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $label ); ?></label></th>
+				<td>
+					<?php if ( 'description' === $key ) : ?>
+						<textarea class="large-text" rows="4" id="gallery-default-<?php echo esc_attr( $key ); ?>" name="gallery_rendom_content_defaults[<?php echo esc_attr( $key ); ?>]"><?php echo esc_textarea( $defaults[ $key ] ); ?></textarea>
+					<?php elseif ( 'image_position' === $key ) : ?>
+						<select id="gallery-default-<?php echo esc_attr( $key ); ?>" name="gallery_rendom_content_defaults[<?php echo esc_attr( $key ); ?>]">
+							<?php foreach ( $positions as $position => $position_label ) : ?>
+								<option value="<?php echo esc_attr( $position ); ?>" <?php selected( $defaults[ $key ], $position ); ?>><?php echo esc_html( $position_label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+					<?php else : ?>
+						<input class="regular-text" type="<?php echo in_array( $key, array( 'primary_url', 'secondary_url' ), true ) ? 'url' : 'text'; ?>" id="gallery-default-<?php echo esc_attr( $key ); ?>" name="gallery_rendom_content_defaults[<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( $defaults[ $key ] ); ?>">
+					<?php endif; ?>
+				</td>
+			</tr>
+		<?php endforeach; ?>
+	</table>
+	<?php
+}
+
+/**
  * Register front-end assets.
  */
 function gallery_rendom_register_assets() {
@@ -665,8 +803,11 @@ function gallery_rendom_render_shortcode( $atts ) {
 			$query->the_post();
 
 			$post_id          = get_the_ID();
-			$caption            = get_post_meta( $post_id, '_gallery_rendom_caption', true );
-			$image_position     = gallery_rendom_sanitize_image_position( get_post_meta( $post_id, '_gallery_rendom_image_position', true ) );
+			$content            = gallery_rendom_get_item_content( $post_id );
+			$title              = $content['title'];
+			$image_id           = get_post_thumbnail_id( $post_id );
+			$caption            = $image_id ? trim( (string) wp_get_attachment_caption( $image_id ) ) : '';
+			$image_position     = $content['image_position'];
 			$content_background = gallery_rendom_get_content_background();
 			$text_colors        = gallery_rendom_get_text_colors();
 			$button_colors      = gallery_rendom_get_button_colors();
@@ -680,14 +821,14 @@ function gallery_rendom_render_shortcode( $atts ) {
 				esc_attr( $button_colors['hover_background'] ),
 				esc_attr( $button_colors['hover_text'] )
 			);
-			$primary_label      = get_post_meta( $post_id, '_gallery_rendom_primary_label', true );
-			$primary_url        = get_post_meta( $post_id, '_gallery_rendom_primary_url', true );
-			$secondary_label    = get_post_meta( $post_id, '_gallery_rendom_secondary_label', true );
-			$secondary_url      = get_post_meta( $post_id, '_gallery_rendom_secondary_url', true );
+			$primary_label      = $content['primary_label'];
+			$primary_url        = $content['primary_url'];
+			$secondary_label    = $content['secondary_label'];
+			$secondary_url      = $content['secondary_url'];
 			$title_id           = 'gallery-rendom-title-' . $post_id;
 			$description_id     = 'gallery-rendom-description-' . $post_id;
 			$caption_id         = 'gallery-rendom-caption-' . $post_id;
-			$description        = trim( get_the_excerpt() ? get_the_excerpt() : wp_strip_all_tags( get_the_content() ) );
+			$description        = $content['description'];
 			$description        = trim( wp_trim_words( $description, 32, '&hellip;' ) );
 			$description_html   = $description ? wpautop( $description ) : '';
 			$describedby        = array();
@@ -696,17 +837,13 @@ function gallery_rendom_render_shortcode( $atts ) {
 				$describedby[] = $description_id;
 			}
 
-			if ( $caption ) {
-				$describedby[] = $caption_id;
-			}
-
 			$context = array(
 				'isCaptionOpen'  => false,
 				'showCaptionText' => __( 'Show image caption', 'gallery-random' ),
 				'hideCaptionText' => __( 'Hide image caption', 'gallery-random' ),
 			);
 			?>
-			<article class="gallery-rendom__item" style="<?php echo esc_attr( $style ); ?>" data-wp-interactive="galleryRandom" data-wp-context="<?php echo esc_attr( wp_json_encode( $context ) ); ?>" data-wp-on-document--keydown="actions.closeCaptionOnEscape" aria-labelledby="<?php echo esc_attr( $title_id ); ?>"<?php echo $describedby ? ' aria-describedby="' . esc_attr( implode( ' ', $describedby ) ) . '"' : ''; ?>>
+			<article class="gallery-rendom__item" style="<?php echo esc_attr( $style ); ?>" data-wp-interactive="galleryRandom" data-wp-context="<?php echo esc_attr( wp_json_encode( $context ) ); ?>" data-wp-on-document--keydown="actions.closeCaptionOnEscape"<?php echo '' !== $title ? ' aria-labelledby="' . esc_attr( $title_id ) . '"' : ''; ?><?php echo $describedby ? ' aria-describedby="' . esc_attr( implode( ' ', $describedby ) ) . '"' : ''; ?>>
 				<div class="gallery-rendom__media">
 					<?php
 					if ( has_post_thumbnail() ) {
@@ -718,7 +855,7 @@ function gallery_rendom_render_shortcode( $atts ) {
 							'full',
 							false,
 							array(
-								'alt'   => $image_alt ? $image_alt : get_the_title(),
+								'alt'   => $image_alt ? $image_alt : $title,
 								'class' => 'gallery-rendom__image',
 								'style' => '--gallery-rendom-object-position:' . esc_attr( $image_position ) . ';',
 							)
@@ -734,7 +871,9 @@ function gallery_rendom_render_shortcode( $atts ) {
 				</div>
 
 				<div class="gallery-rendom__body">
-					<<?php echo esc_html( $heading_tag ); ?> class="gallery-rendom__title" id="<?php echo esc_attr( $title_id ); ?>"><?php the_title(); ?></<?php echo esc_html( $heading_tag ); ?>>
+					<?php if ( '' !== $title ) : ?>
+						<<?php echo esc_html( $heading_tag ); ?> class="gallery-rendom__title" id="<?php echo esc_attr( $title_id ); ?>"><?php echo esc_html( $title ); ?></<?php echo esc_html( $heading_tag ); ?>>
+					<?php endif; ?>
 					<?php if ( $description ) : ?>
 						<div class="gallery-rendom__description" id="<?php echo esc_attr( $description_id ); ?>"><?php echo wp_kses_post( $description_html ); ?></div>
 					<?php endif; ?>

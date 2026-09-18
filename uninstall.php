@@ -10,6 +10,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 $gallery_rendom_options = array(
+	'gallery_rendom_content_defaults',
 	'gallery_rendom_content_background',
 	'gallery_rendom_title_color',
 	'gallery_rendom_description_color',
