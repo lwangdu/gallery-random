@@ -5,7 +5,7 @@ if ( 'cli' !== PHP_SAPI ) {
 }
 define( 'ABSPATH', __DIR__ );
 define( 'DAY_IN_SECONDS', 86400 );
-function add_action( ...$args ) {}
+function add_action( ...$args ) { $GLOBALS['actions'][ $args[0] ][] = $args[1]; }
 function add_shortcode( ...$args ) {}
 function plugin_dir_url( $file ) { return ''; }
 function __( $value, $domain = '' ) { return $value; }
@@ -24,6 +24,9 @@ function strip_shortcodes( $value ) { return $value; }
 function sanitize_hex_color( $value ) { return preg_match( '/^#[a-f0-9]{6}$/i', $value ) ? $value : ''; }
 function shortcode_atts( $defaults, $atts, $shortcode ) { return array_merge( $defaults, $atts ); }
 function absint( $value ) { return abs( (int) $value ); }
+function wp_unique_id( $prefix = '' ) { static $id = 0; return $prefix . ++$id; }
+function get_post_type( $id ) { return $GLOBALS['post_types'][ $id ] ?? false; }
+function delete_transient( $key ) { $GLOBALS['deleted_transients'][] = $key; }
 function get_transient( $key ) { return array( 1 ); }
 function wp_enqueue_style( ...$args ) {}
 function wp_enqueue_script( ...$args ) {}
@@ -84,6 +87,25 @@ $html = gallery_rendom_render_shortcode( array() );
 check( false !== strpos( $html, 'Media caption &lt;script&gt;' ) && false === strpos( $html, 'Legacy caption' ), 'Caption comes from attachment and is escaped' );
 check( false !== strpos( $html, ' hidden>' ) && false !== strpos( $html, 'aria-expanded="false"' ), 'Caption starts hidden with collapsed button' );
 check( false !== strpos( $html, 'Shared title' ) && false !== strpos( $html, 'Shared description' ), 'Renderer uses inherited content' );
+$second_html = gallery_rendom_render_shortcode( array() );
+preg_match_all( '/\bid="([^"]+)"/', $html . $second_html, $ids );
+check( count( $ids[1] ) === count( array_unique( $ids[1] ) ), 'Repeated gallery items have unique HTML IDs' );
+foreach ( array( $html, $second_html ) as $instance ) {
+	preg_match_all( '/aria-(?:controls|labelledby|describedby)="([^"]+)"/', $instance, $references );
+	foreach ( $references[1] as $reference ) {
+		check( false !== strpos( $instance, 'id="' . $reference . '"' ), 'Accessibility reference targets its own gallery instance' );
+	}
+}
+$GLOBALS['post_types'][1] = 'gallery_rendom_item';
+$GLOBALS['deleted_transients'] = array();
+foreach ( $GLOBALS['actions']['before_delete_post'] ?? array() as $callback ) {
+	$callback( 1 );
+}
+check( array( GALLERY_RENDOM_ITEM_IDS_TRANSIENT ) === $GLOBALS['deleted_transients'], 'Permanent deletion clears cache while the post still exists' );
+$GLOBALS['deleted_transients'] = array();
+$GLOBALS['post_types'][2] = 'post';
+gallery_rendom_clear_item_ids_cache( 2 );
+check( array() === $GLOBALS['deleted_transients'], 'Unrelated post deletion leaves gallery cache intact' );
 $GLOBALS['captions'][10] = '';
 $html = gallery_rendom_render_shortcode( array() );
 check( false === strpos( $html, 'gallery-rendom__info' ), 'Empty attachment caption hides info button despite legacy caption' );

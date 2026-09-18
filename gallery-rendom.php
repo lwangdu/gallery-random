@@ -198,7 +198,7 @@ function gallery_rendom_save_meta( $post_id ) {
 		return;
 	}
 
-	$fields = array(
+	$fields            = array(
 		'_gallery_rendom_primary_label'   => array( 'gallery_rendom_primary_label', 'sanitize_text_field' ),
 		'_gallery_rendom_primary_url'     => array( 'gallery_rendom_primary_url', 'esc_url_raw' ),
 		'_gallery_rendom_secondary_label' => array( 'gallery_rendom_secondary_label', 'sanitize_text_field' ),
@@ -239,7 +239,7 @@ function gallery_rendom_clear_item_ids_cache( $post_id = 0 ) {
 	delete_transient( GALLERY_RENDOM_ITEM_IDS_TRANSIENT );
 }
 add_action( 'save_post_gallery_rendom_item', 'gallery_rendom_clear_item_ids_cache' );
-add_action( 'deleted_post', 'gallery_rendom_clear_item_ids_cache' );
+add_action( 'before_delete_post', 'gallery_rendom_clear_item_ids_cache' );
 add_action( 'trashed_post', 'gallery_rendom_clear_item_ids_cache' );
 add_action( 'untrashed_post', 'gallery_rendom_clear_item_ids_cache' );
 
@@ -279,13 +279,13 @@ function gallery_rendom_register_settings() {
 		)
 	);
 	$settings = array(
-		'gallery_rendom_content_background'        => GALLERY_RENDOM_DEFAULT_CONTENT_BACKGROUND,
-		'gallery_rendom_title_color'               => GALLERY_RENDOM_DEFAULT_TITLE_COLOR,
-		'gallery_rendom_description_color'         => GALLERY_RENDOM_DEFAULT_DESCRIPTION_COLOR,
-		'gallery_rendom_button_background'         => GALLERY_RENDOM_DEFAULT_BUTTON_BACKGROUND,
-		'gallery_rendom_button_text'               => GALLERY_RENDOM_DEFAULT_BUTTON_TEXT,
-		'gallery_rendom_button_hover_background'   => GALLERY_RENDOM_DEFAULT_BUTTON_HOVER_BACKGROUND,
-		'gallery_rendom_button_hover_text'         => GALLERY_RENDOM_DEFAULT_BUTTON_HOVER_TEXT,
+		'gallery_rendom_content_background'      => GALLERY_RENDOM_DEFAULT_CONTENT_BACKGROUND,
+		'gallery_rendom_title_color'             => GALLERY_RENDOM_DEFAULT_TITLE_COLOR,
+		'gallery_rendom_description_color'       => GALLERY_RENDOM_DEFAULT_DESCRIPTION_COLOR,
+		'gallery_rendom_button_background'       => GALLERY_RENDOM_DEFAULT_BUTTON_BACKGROUND,
+		'gallery_rendom_button_text'             => GALLERY_RENDOM_DEFAULT_BUTTON_TEXT,
+		'gallery_rendom_button_hover_background' => GALLERY_RENDOM_DEFAULT_BUTTON_HOVER_BACKGROUND,
+		'gallery_rendom_button_hover_text'       => GALLERY_RENDOM_DEFAULT_BUTTON_HOVER_TEXT,
 	);
 
 	foreach ( $settings as $setting_name => $default ) {
@@ -458,13 +458,13 @@ function gallery_rendom_sanitize_hex_color( $value ) {
  * Get an option color with fallback.
  *
  * @param string $option_name Option name.
- * @param string $default     Default hex color.
+ * @param string $fallback    Default hex color.
  * @return string
  */
-function gallery_rendom_get_color_option( $option_name, $default ) {
-	$color = gallery_rendom_sanitize_hex_color( get_option( $option_name, $default ) );
+function gallery_rendom_get_color_option( $option_name, $fallback ) {
+	$color = gallery_rendom_sanitize_hex_color( get_option( $option_name, $fallback ) );
 
-	return $color ? $color : $default;
+	return $color ? $color : $fallback;
 }
 
 /**
@@ -603,7 +603,7 @@ function gallery_rendom_get_item_content( $post_id ) {
  * Render accessible controls for plugin-wide content defaults.
  */
 function gallery_rendom_render_content_defaults() {
-	$defaults = gallery_rendom_sanitize_content_defaults( get_option( 'gallery_rendom_content_defaults', array() ) );
+	$defaults  = gallery_rendom_sanitize_content_defaults( get_option( 'gallery_rendom_content_defaults', array() ) );
 	$positions = array(
 		'center center' => __( 'Center', 'gallery-random' ),
 		'center top'    => __( 'Top', 'gallery-random' ),
@@ -762,8 +762,8 @@ function gallery_rendom_render_shortcode( $atts ) {
 		'gallery_rendom'
 	);
 
-	$heading_level = min( 6, max( 1, absint( $atts['heading_level'] ) ) );
-	$heading_tag   = 'h' . $heading_level;
+	$heading_level    = min( 6, max( 1, absint( $atts['heading_level'] ) ) );
+	$heading_tag      = 'h' . $heading_level;
 	$selected_item_id = gallery_rendom_get_random_item_id();
 
 	if ( ! $selected_item_id ) {
@@ -802,7 +802,7 @@ function gallery_rendom_render_shortcode( $atts ) {
 		while ( $query->have_posts() ) :
 			$query->the_post();
 
-			$post_id          = get_the_ID();
+			$post_id            = get_the_ID();
 			$content            = gallery_rendom_get_item_content( $post_id );
 			$title              = $content['title'];
 			$image_id           = get_post_thumbnail_id( $post_id );
@@ -825,9 +825,10 @@ function gallery_rendom_render_shortcode( $atts ) {
 			$primary_url        = $content['primary_url'];
 			$secondary_label    = $content['secondary_label'];
 			$secondary_url      = $content['secondary_url'];
-			$title_id           = 'gallery-rendom-title-' . $post_id;
-			$description_id     = 'gallery-rendom-description-' . $post_id;
-			$caption_id         = 'gallery-rendom-caption-' . $post_id;
+			$instance_id        = wp_unique_id( 'gallery-rendom-' );
+			$title_id           = $instance_id . '-title';
+			$description_id     = $instance_id . '-description';
+			$caption_id         = $instance_id . '-caption';
 			$description        = $content['description'];
 			$description        = trim( wp_trim_words( $description, 32, '&hellip;' ) );
 			$description_html   = $description ? wpautop( $description ) : '';
@@ -838,7 +839,7 @@ function gallery_rendom_render_shortcode( $atts ) {
 			}
 
 			$context = array(
-				'isCaptionOpen'  => false,
+				'isCaptionOpen'   => false,
 				'showCaptionText' => __( 'Show image caption', 'gallery-random' ),
 				'hideCaptionText' => __( 'Hide image caption', 'gallery-random' ),
 			);

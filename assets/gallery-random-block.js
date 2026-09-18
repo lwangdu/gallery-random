@@ -1,72 +1,52 @@
-( function ( blockEditor, blocks, components, element, i18n, serverSideRender ) {
-	var createElement = element.createElement;
-	var Fragment = element.Fragment;
-	var InspectorControls = blockEditor.InspectorControls;
-	var PanelBody = components.PanelBody;
-	var SelectControl = components.SelectControl;
-	var ServerSideRender = serverSideRender.default || serverSideRender;
-	var headingLevelOptions = [
-		{ label: i18n.__( 'Heading 1', 'gallery-random' ), value: 1 },
-		{ label: i18n.__( 'Heading 2', 'gallery-random' ), value: 2 },
-		{ label: i18n.__( 'Heading 3', 'gallery-random' ), value: 3 },
-		{ label: i18n.__( 'Heading 4', 'gallery-random' ), value: 4 },
-		{ label: i18n.__( 'Heading 5', 'gallery-random' ), value: 5 },
-		{ label: i18n.__( 'Heading 6', 'gallery-random' ), value: 6 },
-	];
+( function ( wp ) {
+	'use strict';
 
-	blocks.registerBlockType( 'gallery-random/random-hero', {
-		title: i18n.__( 'Gallery Random', 'gallery-random' ),
-		description: i18n.__( 'Displays one random Gallery Random item.', 'gallery-random' ),
-		category: 'widgets',
-		icon: 'format-gallery',
-		supports: {
-			html: false,
-		},
-		attributes: {
-			headingLevel: {
-				type: 'number',
-				default: 2,
-			},
-		},
-		edit: function ( props ) {
-			return createElement(
-				Fragment,
+	var el = wp.element.createElement;
+	var __ = wp.i18n.__;
+	var ServerSideRender = wp.serverSideRender.ServerSideRender || wp.serverSideRender.default || wp.serverSideRender;
+
+	function edit( props ) {
+		return el(
+			'div',
+			wp.blockEditor.useBlockProps(),
+			el(
+				wp.blockEditor.InspectorControls,
 				null,
-				createElement(
-					InspectorControls,
-					null,
-					createElement(
-						PanelBody,
-						{
-							title: i18n.__( 'Gallery Random Settings', 'gallery-random' ),
+				el(
+					wp.components.PanelBody,
+					{ title: __( 'Gallery settings', 'gallery-random' ) },
+					el( wp.components.SelectControl, {
+						label: __( 'Heading level', 'gallery-random' ),
+						value: props.attributes.headingLevel,
+						options: [ 1, 2, 3, 4, 5, 6 ].map( function ( level ) {
+							return { label: 'H' + level, value: level };
+						} ),
+						onChange: function ( value ) {
+							props.setAttributes( { headingLevel: Number( value ) } );
 						},
-						createElement( SelectControl, {
-							label: i18n.__( 'Heading level', 'gallery-random' ),
-							value: props.attributes.headingLevel,
-							options: headingLevelOptions,
-							onChange: function ( value ) {
-								props.setAttributes( {
-									headingLevel: parseInt( value, 10 ),
-								} );
-							},
-						} )
-					)
-				),
-				createElement( ServerSideRender, {
-					block: 'gallery-random/random-hero',
-					attributes: props.attributes,
-				} )
-			);
-		},
-		save: function () {
-			return null;
-		},
+					} )
+				)
+			),
+			el( wp.components.Disabled, null, el( ServerSideRender, {
+				block: props.name,
+				attributes: props.attributes,
+			} ) )
+		);
+	}
+
+	[ 'gallery-random/random-hero', 'gallery-rendom/random-hero' ].forEach( function ( name ) {
+		wp.blocks.registerBlockType( name, {
+			apiVersion: 2,
+			title: __( 'Gallery Random', 'gallery-random' ),
+			description: __( 'Display a random gallery image with its title, description, and buttons.', 'gallery-random' ),
+			icon: 'format-gallery',
+			category: 'widgets',
+			attributes: { headingLevel: { type: 'number', default: 2 } },
+			supports: { html: false, inserter: name === 'gallery-random/random-hero' },
+			edit: edit,
+			save: function () {
+				return null;
+			},
+		} );
 	} );
-}(
-	window.wp.blockEditor,
-	window.wp.blocks,
-	window.wp.components,
-	window.wp.element,
-	window.wp.i18n,
-	window.wp.serverSideRender
-) );
+}( window.wp ) );

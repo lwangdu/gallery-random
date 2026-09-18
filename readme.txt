@@ -30,6 +30,8 @@ The original misspelled shortcodes are kept as compatibility aliases for existin
 
 You can also add the Gallery Random block in the block editor. The block uses the same renderer as the shortcode so front-end output stays consistent.
 
+The block's settings sidebar lets you select a heading level from H1 through H6. Existing blocks using the original misspelled name remain editable. Multiple galleries on one page have independent caption controls and accessibility references.
+
 == Settings ==
 Go to Settings > Gallery Random (also available under Gallery Random > Settings) to set the default title, description, focal position, and primary/secondary button text and URLs. Each blank item field inherits its matching default. An item's excerpt takes priority over its editor content; when both are blank, the default description is used. Descriptions retain the existing 32-word display limit. Select Use plugin default for an item's focal position; existing explicit positions remain overrides. Buttons appear only when their resolved text and URL are both present.
 
@@ -43,3 +45,10 @@ The shortcode defines DONOTCACHEPAGE during render and stores the published Gall
 
 == Uninstall ==
 Deleting the plugin removes its color settings, content defaults, and transient cache. Gallery Random Item posts and Media Library captions are left in place because they are editorial content.
+
+== Changelog ==
+= Unreleased =
+* Improve block editor compatibility with current preview exports, proper block wrappers, and editable legacy blocks.
+* Use unique accessibility IDs for each gallery instance.
+* Apply the configured title color in the gallery stylesheet.
+* Clear the item cache before permanent deletion so deleted items cannot remain in the cached selection list.
